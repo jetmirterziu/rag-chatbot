@@ -1,7 +1,8 @@
 import os
+import streamlit as st
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI  # <--- CHANGED: Switched to OpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain.retrievers import ContextualCompressionRetriever
@@ -10,7 +11,6 @@ from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 
 # Configuration
 DB_PATH = "vector_db"
-OLLAMA_MODEL = "mistral"
 
 def get_rag_components():
     # 1. Setup Embeddings
@@ -22,7 +22,7 @@ def get_rag_components():
         search_type="similarity_score_threshold",
         search_kwargs={
             "k": 20,
-            "score_threshold": 0.5 
+            "score_threshold": 0.3
         }
     )
 
@@ -34,27 +34,39 @@ def get_rag_components():
         base_compressor=compressor, base_retriever=base_retriever
     )
 
-    # 4. LLM
-    llm = ChatOllama(model=OLLAMA_MODEL, temperature=0)
+    # 4. LLM 
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key and hasattr(st, "secrets") and "OPENAI_API_KEY" in st.secrets:
+        api_key = st.secrets["OPENAI_API_KEY"]
+
+    if not api_key:
+        # Fallback to prevent crash if key is missing, but will error if used
+        print("WARNING: OpenAI API Key not found!")
+
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0,
+        api_key=api_key
+    )
 
     # 5. Chains
 
     # --- MEMORY REWRITER ---
     contextualize_q_system_prompt = """
     You are a query rewriting assistant.
-    Your goal is to clarify the user's question for a search engine.
+    Your ONLY goal is to rephrase the user's question into a standalone search query.
 
     RULES:
-    1. **NO PRONOUNS:** You must replace EVERY instance of 'it', 'its', 'they', or 'their'
-    with the actual Company Name from history. The output MUST NOT contain the word 'it'.
-    2. **NEW TOPICS:** If the user explicitly mentions a NEW company name, use THAT name
-    and ignore the history.
-    3. **GIBBERISH:** If the input looks like random letters, return it AS IS.
-    4. **NO HALLUCINATION:** Do NOT invent, infer, guess, or add any company names,
-    facts, or details that are not explicitly present in the input or chat history.
-    5. Return ONLY the rewritten question.
+    1. **NO ANSWERS:** Do NOT answer the question. Do NOT define terms.
+       - BAD Output: "Visa is a credit card company."
+       - GOOD Output: "What is Visa Inc?"
+    2. **NO PRONOUNS:** You must replace EVERY instance of 'it', 'its', 'they', or 'their'
+       with the actual Company Name from history.
+    3. **NEW TOPICS:** If the user explicitly mentions a NEW company name, use THAT name
+       and ignore the history.
+    4. **NO HALLUCINATION:** Do NOT add facts or details not present in the input.
+    5. Return ONLY the rewritten question string.
     """.strip()
-
 
     contextualize_q_prompt = ChatPromptTemplate.from_messages([
         ("system", contextualize_q_system_prompt),
@@ -63,7 +75,6 @@ def get_rag_components():
     ])
 
     history_aware_chain = contextualize_q_prompt | llm | StrOutputParser()
-
 
     # --- ANSWERER ---
     qa_system_prompt = """
