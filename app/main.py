@@ -16,7 +16,7 @@ from rag.bot import get_rag_components
 
 st.set_page_config(page_title="Finance RAG Chatbot", page_icon="💰")
 st.title("💰 Finance RAG Agent")
-st.caption("Powered by Local Ollama & Reranking")
+st.caption("Powered by OpenAI (GPT-4o) & Cross-Encoder Reranking")
 
 # --- 🚦 THE TRAFFIC COP (GUARDRAIL) 🚦 ---
 def route_query(user_input, llm):
@@ -44,7 +44,25 @@ def route_query(user_input, llm):
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 1. DISPLAY HISTORY (Now with Sources! 📄)
+# ---  WELCOME SCREEN ---
+if len(st.session_state.messages) == 0:
+    st.markdown("""
+    ### 👋 Welcome!
+    I am your AI Financial Analyst. I have studied the **2023 Annual Reports** for major financial institutions, including:
+    
+    * 🏢 **BlackRock Inc.**
+    * 💳 **Visa Inc.**
+    * 🏦 **JPMorgan Chase & Co.**
+    * ...and others.
+    
+    **I can help you with:**
+    * 📊 **Financial Highlights:** Ask for revenue, net income, or EPS.
+    * ⚠️ **Risk Analysis:** Understand the strategic risks companies face.
+    * 🔮 **Future Outlook:** See what the CEOs are predicting.
+    """)
+    st.info("💡 **Try asking:** 'What was BlackRock's revenue in 2023?' or 'What are the main risks for Visa?'")
+
+# 1. DISPLAY HISTORY
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
